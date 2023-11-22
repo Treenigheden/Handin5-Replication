@@ -1,4 +1,4 @@
-module homework4
+module homework5
 
 go 1.21.1
 

@@ -11,7 +11,7 @@ import (
 	"net"
 	"strconv"
 
-	pb "Handin5-Replication/gRPC"
+	pb "homework5/gRPC"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -21,8 +21,8 @@ import (
 type NodeInfo struct {
 	port           int32
 	leaderNode     int32
-	client         pb.NodeServiceClient
-	connectedNodes []pb.NodeServiceClient
+	client         pb.ServerNodeClient
+	connectedNodes []pb.ServerNodeClient
 	isLeaderNode   bool //might not be needed since we have the leadernode variable, but could improve readability
 	timestamp      int32
 }
@@ -34,7 +34,7 @@ type Server struct {
 
 var connectedNodesMapPort = make(map[int32]NodeInfo)
 
-var connectedNodesMapClient = make(map[pb.NodeServiceClient]NodeInfo)
+var connectedNodesMapClient = make(map[pb.ServerNodeClient]NodeInfo)
 
 func FindAnAvailablePort(standardPort int) (int, error) {
 	for port := standardPort; port < standardPort+100; port++ {
@@ -56,7 +56,7 @@ func (s *Server) RequestLederPosition(port int32) {
 	//not implimentet yet
 }
 
-func (s *Server) EstablishConnectionToAllOtherNodes(standardPort int, thisPort int, transportCreds credentials.TransportCredentials, connectedNodes []pb.NodeServiceClient) {
+func (s *Server) EstablishConnectionToAllOtherNodes(standardPort int, thisPort int, transportCreds credentials.TransportCredentials, connectedNodes []pb.ServerNodeClient) {
 	//We cycle through the available ports in order to find the other nodes in the system and establish connections.
 	for port := standardPort; port < standardPort+100; port++ {
 		if port == thisPort {
@@ -69,7 +69,7 @@ func (s *Server) EstablishConnectionToAllOtherNodes(standardPort int, thisPort i
 		}
 
 		//We make a node with the connection to check if there is anything there
-		node := pb.NewNodeServiceClient(conn)
+		node := pb.NewServerNodeClient(conn)
 		_, err1 := node.IExist(context.Background(), &pb.Confirmation{})
 		if err1 != nil {
 			//There is no node on this port. We move onto the next and try again.
@@ -85,7 +85,7 @@ func (s *Server) EstablishConnectionToAllOtherNodes(standardPort int, thisPort i
 
 		//Then we send an announcement to inform the node
 		//in order to inform it that we have connected to it (and that it should connect to this node in return.)
-		_, err := node.AnnounceConnection(context.Background(), &pb.ConnectionAnnouncement{NodeID: int32(s.node.port)})
+		_, err = node.AnnounceConnection(context.Background(), &pb.ConnectionAnnouncement{NodeID: int32(s.node.port)})
 		if err != nil {
 			log.Fatalf("Oh no! The node sent an announcement of a new connection but did not recieve a confirmation in return. Error: %v", err)
 		}
@@ -96,7 +96,7 @@ func (s *Server) EstablishConnectionToAllOtherNodes(standardPort int, thisPort i
 
 func main() {
 	timestamp := 0
-	connectedNodes := []pb.NodeServiceClient{}
+	connectedNodes := []pb.ServerNodeClient{}
 
 	//finds a port to listen on
 	standardPort := 8000
@@ -137,7 +137,7 @@ func main() {
 
 	//Create a grpc client instance to represent local node (this node) and add it to connected nodes.
 	//!---maybe we dont need to do this for this implimetation---!
-	thisNodeClient := pb.NewNodeServiceClient(conn)
+	thisNodeClient := pb.NewServerNodeClient(conn)
 	connectedNodes = append(connectedNodes, thisNodeClient)
 
 	//Genrate node

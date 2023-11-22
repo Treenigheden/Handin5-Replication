@@ -1,14 +1,13 @@
 syntax = "proto3";
 
-package main;
-
-option go_package = "gRPC/proto";
+package homework5;
+option go_package = "./gRPC";
 
 service ServerNode {
     //API for clients:
     //dont know if (void) can be expressed like this
     rpc Bid(BidInput) returns (Confirmation);
-    rpc Result() returns (Outcome);
+    rpc Result(Empty) returns (Outcome);
     
     //
     rpc AnnounceConnection(ConnectionAnnouncement) returns (Confirmation); //maybe confirmation from leader should include timestamp so that followernodes have propper timestamp from begning
@@ -49,6 +48,9 @@ message AccessRequestResponse {
 message AccessRequest {
     int32 nodeID = 1;
     int32 timestamp = 2;
+}
+
+message Empty {
 }
 
 //might not be neccecary
