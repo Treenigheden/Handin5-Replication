@@ -28,13 +28,25 @@ type NodeInfo struct {
 }
 
 type Server struct {
-	//pb.UnimplementedNodeServiceServer
+	pb.UnimplementedNodeServiceServer
 	node NodeInfo
 }
 
 var connectedNodesMapPort = make(map[int32]NodeInfo)
 
 var connectedNodesMapClient = make(map[pb.ServerNodeClient]NodeInfo)
+
+func (s *Server) Bid(amount int32) (success bool) {
+
+}
+
+func (s *Server) Result() (amount int32, auctionOver bool) {
+
+}
+
+func (s *Server) AnnounceConnection(port int32, timestamp int32) (success bool) {
+
+}
 
 func FindAnAvailablePort(standardPort int) (int, error) {
 	for port := standardPort; port < standardPort+100; port++ {
@@ -53,7 +65,6 @@ func FindAnAvailablePort(standardPort int) (int, error) {
 
 func (s *Server) RequestLederPosition(port int32) {
 
-	//not implimentet yet
 }
 
 func (s *Server) EstablishConnectionToAllOtherNodes(standardPort int, thisPort int, transportCreds credentials.TransportCredentials, connectedNodes []pb.ServerNodeClient) {

@@ -13,7 +13,8 @@ service ServerNode {
     rpc AnnounceConnection(ConnectionAnnouncement) returns (Confirmation); //maybe confirmation from leader should include timestamp so that followernodes have propper timestamp from begning
     rpc AnnounceUpdate(UpdateAnnouncement) returns (Confirmation); //for when the leaderserver gets an upgrade
     rpc RequestLeadership(AccessRequest) returns (AccessRequestResponse);
-
+    rpc IExist(Empty) returns (Empty);
+    rpc IAmLeader(ConnectionAnnouncement) returns (Empty);
     //need some further functions in order to make deathnode and decisionnode announcements
 }
 
@@ -55,5 +56,4 @@ message Empty {
 
 //might not be neccecary
 service ClientNode {
-
 }
