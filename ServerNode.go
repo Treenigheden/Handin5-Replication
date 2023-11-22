@@ -20,7 +20,7 @@ import (
 
 type NodeInfo struct {
 	port           int32
-	leaderNode     int32
+	leader         pb.ServerNodeClient
 	client         pb.ServerNodeClient
 	connectedNodes []pb.ServerNodeClient
 	isLeaderNode   bool //might not be needed since we have the leadernode variable, but could improve readability
@@ -28,7 +28,7 @@ type NodeInfo struct {
 }
 
 type Server struct {
-	pb.UnimplementedNodeServiceServer
+	pb.UnimplementedServerNodeServer
 	node NodeInfo
 }
 
@@ -36,15 +36,31 @@ var connectedNodesMapPort = make(map[int32]NodeInfo)
 
 var connectedNodesMapClient = make(map[pb.ServerNodeClient]NodeInfo)
 
-func (s *Server) Bid(amount int32) (success bool) {
+func (s *Server) Bid(ctx context.Context, input *pb.BidInput) (*pb.Confirmation, error) {
 
 }
 
-func (s *Server) Result() (amount int32, auctionOver bool) {
+func (s *Server) Result(ctx context.Context, _ *pb.Empty) (*pb.Outcome, error) {
 
 }
 
-func (s *Server) AnnounceConnection(port int32, timestamp int32) (success bool) {
+func (s *Server) AnnounceConnection(ctx context.Context, announcement *pb.ConnectionAnnouncement) (*pb.Confirmation, error) {
+
+}
+
+func (s *Server) AnnounceUpdate(ctx context.Context, announcement *pb.UpdateAnnouncement) (*pb.Confirmation, error) {
+
+}
+
+func (s *Server) RequestLeadership(ctx context.Context, request *pb.AccessRequest) (*pb.AccessRequestResponse, error) {
+
+}
+
+func (s *Server) IExist(ctx context.Context, _ *pb.Empty) (*pb.Empty, error) {
+
+}
+
+func (s *Server) IAmLeader(ctx context.Context, anouncement *pb.ConnectionAnnouncement) (*pb.Empty, error) {
 
 }
 
@@ -61,10 +77,6 @@ func FindAnAvailablePort(standardPort int) (int, error) {
 		return port, nil
 	}
 	return 0, fmt.Errorf("no free port found in the range")
-}
-
-func (s *Server) RequestLederPosition(port int32) {
-
 }
 
 func (s *Server) EstablishConnectionToAllOtherNodes(standardPort int, thisPort int, transportCreds credentials.TransportCredentials, connectedNodes []pb.ServerNodeClient) {
@@ -96,7 +108,7 @@ func (s *Server) EstablishConnectionToAllOtherNodes(standardPort int, thisPort i
 
 		//Then we send an announcement to inform the node
 		//in order to inform it that we have connected to it (and that it should connect to this node in return.)
-		_, err = node.AnnounceConnection(context.Background(), &pb.ConnectionAnnouncement{NodeID: int32(s.node.port)})
+		_, err := node.AnnounceConnection(context.Background(), &pb.ConnectionAnnouncement{NodeID: int32(s.node.port)})
 		if err != nil {
 			log.Fatalf("Oh no! The node sent an announcement of a new connection but did not recieve a confirmation in return. Error: %v", err)
 		}
@@ -121,7 +133,7 @@ func main() {
 	grpcServer := grpc.NewServer()
 	server := Server{}
 	// Register your gRPC service with the server
-	pb.RegisterNodeServiceServer(grpcServer, &server)
+	pb.RegisterServerNodeServer(grpcServer, &server)
 
 	//initialize the listener on the specified port. net.Listen listens for incoming connections with tcp socket
 	listen, err := net.Listen("tcp", "localhost:"+strconv.Itoa(port))
