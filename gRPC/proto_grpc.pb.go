@@ -24,6 +24,8 @@ const (
 	ServerNode_AnnounceConnection_FullMethodName = "/homework5.ServerNode/AnnounceConnection"
 	ServerNode_AnnounceUpdate_FullMethodName     = "/homework5.ServerNode/AnnounceUpdate"
 	ServerNode_RequestLeadership_FullMethodName  = "/homework5.ServerNode/RequestLeadership"
+	ServerNode_IExist_FullMethodName             = "/homework5.ServerNode/IExist"
+	ServerNode_IAmLeader_FullMethodName          = "/homework5.ServerNode/IAmLeader"
 )
 
 // ServerNodeClient is the client API for ServerNode service.
@@ -37,6 +39,8 @@ type ServerNodeClient interface {
 	AnnounceConnection(ctx context.Context, in *ConnectionAnnouncement, opts ...grpc.CallOption) (*Confirmation, error)
 	AnnounceUpdate(ctx context.Context, in *UpdateAnnouncement, opts ...grpc.CallOption) (*Confirmation, error)
 	RequestLeadership(ctx context.Context, in *AccessRequest, opts ...grpc.CallOption) (*AccessRequestResponse, error)
+	IExist(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Empty, error)
+	IAmLeader(ctx context.Context, in *ConnectionAnnouncement, opts ...grpc.CallOption) (*Empty, error)
 }
 
 type serverNodeClient struct {
@@ -92,6 +96,24 @@ func (c *serverNodeClient) RequestLeadership(ctx context.Context, in *AccessRequ
 	return out, nil
 }
 
+func (c *serverNodeClient) IExist(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Empty, error) {
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, ServerNode_IExist_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *serverNodeClient) IAmLeader(ctx context.Context, in *ConnectionAnnouncement, opts ...grpc.CallOption) (*Empty, error) {
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, ServerNode_IAmLeader_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ServerNodeServer is the server API for ServerNode service.
 // All implementations must embed UnimplementedServerNodeServer
 // for forward compatibility
@@ -103,6 +125,8 @@ type ServerNodeServer interface {
 	AnnounceConnection(context.Context, *ConnectionAnnouncement) (*Confirmation, error)
 	AnnounceUpdate(context.Context, *UpdateAnnouncement) (*Confirmation, error)
 	RequestLeadership(context.Context, *AccessRequest) (*AccessRequestResponse, error)
+	IExist(context.Context, *Empty) (*Empty, error)
+	IAmLeader(context.Context, *ConnectionAnnouncement) (*Empty, error)
 	mustEmbedUnimplementedServerNodeServer()
 }
 
@@ -124,6 +148,12 @@ func (UnimplementedServerNodeServer) AnnounceUpdate(context.Context, *UpdateAnno
 }
 func (UnimplementedServerNodeServer) RequestLeadership(context.Context, *AccessRequest) (*AccessRequestResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RequestLeadership not implemented")
+}
+func (UnimplementedServerNodeServer) IExist(context.Context, *Empty) (*Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method IExist not implemented")
+}
+func (UnimplementedServerNodeServer) IAmLeader(context.Context, *ConnectionAnnouncement) (*Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method IAmLeader not implemented")
 }
 func (UnimplementedServerNodeServer) mustEmbedUnimplementedServerNodeServer() {}
 
@@ -228,6 +258,42 @@ func _ServerNode_RequestLeadership_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ServerNode_IExist_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ServerNodeServer).IExist(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ServerNode_IExist_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ServerNodeServer).IExist(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ServerNode_IAmLeader_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConnectionAnnouncement)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ServerNodeServer).IAmLeader(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ServerNode_IAmLeader_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ServerNodeServer).IAmLeader(ctx, req.(*ConnectionAnnouncement))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ServerNode_ServiceDesc is the grpc.ServiceDesc for ServerNode service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -254,6 +320,14 @@ var ServerNode_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RequestLeadership",
 			Handler:    _ServerNode_RequestLeadership_Handler,
+		},
+		{
+			MethodName: "IExist",
+			Handler:    _ServerNode_IExist_Handler,
+		},
+		{
+			MethodName: "IAmLeader",
+			Handler:    _ServerNode_IAmLeader_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

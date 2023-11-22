@@ -20,6 +20,7 @@ service ServerNode {
 
 message BidInput {
     int32 bid = 1;
+    int32 port = 2;
 }
 
 message Outcome{

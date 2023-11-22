@@ -35,12 +35,32 @@ type Server struct {
 var connectedNodesMapPort = make(map[int32]NodeInfo)
 
 var connectedNodesMapClient = make(map[pb.ServerNodeClient]NodeInfo)
+var highestBid = -1
+var highestBidderID = -1
+
+// We only need to consider this variable if we are leader.
+// If we are leader it is correctly updated by the ManageAuction method.
+var auctionIsRunning = false
 
 func (s *Server) Bid(ctx context.Context, input *pb.BidInput) (*pb.Confirmation, error) {
-
+	if !auctionIsRunning {
+		return &pb.Confirmation{Success: false}, nil
+	}
+	if input.Bid > int32(highestBid) {
+		highestBid = int(input.Bid)
+		highestBidderID = int(input.Port)
+		return &pb.Confirmation{Success: true}, nil
+	} else {
+		return &pb.Confirmation{Success: false}, nil
+	}
 }
 
 func (s *Server) Result(ctx context.Context, _ *pb.Empty) (*pb.Outcome, error) {
+	if auctionIsRunning {
+		return &pb.Outcome{Amount: int32(highestBid), AuctionOver: false}, nil
+	} else {
+		return &pb.Outcome{Amount: int32(highestBid), AuctionOver: true}, nil
+	}
 
 }
 
@@ -53,14 +73,68 @@ func (s *Server) AnnounceUpdate(ctx context.Context, announcement *pb.UpdateAnno
 }
 
 func (s *Server) RequestLeadership(ctx context.Context, request *pb.AccessRequest) (*pb.AccessRequestResponse, error) {
-
+	//When this method is called by a remote node, it means that the current leader is dead and there is an election for leadership in process. '
+	//First we compare the timestamp of this node with the timestamp of the incoming request.
+	//If the incoming timestamp is greater (OBS) than the local timestamp, we know that we are not going to win an election. We don't bother sending out requests. We send a response.
+	//If the incoming timestamp is less than the local timestamp, we know that the remote node is out. We have a chance ourselves, however! We send out requests. We send a response.
+	if request.Timestamp > s.node.timestamp {
+		return &pb.AccessRequestResponse{Granted: true, Timestamp: s.node.timestamp}, nil
+	} else {
+		go s.RequestLederPosition()
+		return &pb.AccessRequestResponse{Granted: false, Timestamp: s.node.timestamp}, nil
+	}
 }
 
 func (s *Server) IExist(ctx context.Context, _ *pb.Empty) (*pb.Empty, error) {
+	return &pb.Empty{}, nil
 
 }
 
 func (s *Server) IAmLeader(ctx context.Context, anouncement *pb.ConnectionAnnouncement) (*pb.Empty, error) {
+	//When this method is called by a remote node, it means that that node is the new leader.
+	//We update the leader node and send back a confirmation message (empty)
+	var node = connectedNodesMapPort[anouncement.NodeID]
+	s.node.leader = node.client
+
+	return &pb.Empty{}, nil
+}
+
+func (s *Server) RequestLederPosition() {
+	var isLeaderCandidate = true
+	for _, connectedNode := range s.node.connectedNodes {
+		var response, err = connectedNode.RequestLeadership(context.Background(), &pb.AccessRequest{NodeID: s.node.port, Timestamp: s.node.timestamp})
+		if err != nil {
+			log.Fatalf("OH NO, AN ERROR OCCURED WHILE ASKING A NODE TO BE A LEADER")
+		}
+		if !response.Granted {
+			isLeaderCandidate = false
+			go s.AttendAuction()
+			break
+		}
+	}
+
+	if isLeaderCandidate {
+		fmt.Println("I am new leader")
+		s.AnnounceLeadership()
+		go s.AttendAuction()
+		go s.ManageAuction()
+	}
+
+}
+
+func (s *Server) AnnounceLeadership() {
+	//To announce this node's leadership we cycle through connected nodes and call IAmLeader
+	for _, connectedNode := range s.node.connectedNodes {
+		connectedNode.IAmLeader(context.Background(), &pb.ConnectionAnnouncement{NodeID: s.node.port, Timestamp: s.node.timestamp})
+	}
+
+}
+
+func (s *Server) ManageAuction() {
+
+}
+
+func (s *Server) AttendAuction() {
 
 }
 
@@ -93,7 +167,7 @@ func (s *Server) EstablishConnectionToAllOtherNodes(standardPort int, thisPort i
 
 		//We make a node with the connection to check if there is anything there
 		node := pb.NewServerNodeClient(conn)
-		_, err1 := node.IExist(context.Background(), &pb.Confirmation{})
+		_, err1 := node.IExist(context.Background(), &pb.Empty{})
 		if err1 != nil {
 			//There is no node on this port. We move onto the next and try again.
 			continue
@@ -108,7 +182,7 @@ func (s *Server) EstablishConnectionToAllOtherNodes(standardPort int, thisPort i
 
 		//Then we send an announcement to inform the node
 		//in order to inform it that we have connected to it (and that it should connect to this node in return.)
-		_, err := node.AnnounceConnection(context.Background(), &pb.ConnectionAnnouncement{NodeID: int32(s.node.port)})
+		_, err = node.AnnounceConnection(context.Background(), &pb.ConnectionAnnouncement{NodeID: int32(s.node.port)})
 		if err != nil {
 			log.Fatalf("Oh no! The node sent an announcement of a new connection but did not recieve a confirmation in return. Error: %v", err)
 		}
@@ -171,7 +245,7 @@ func main() {
 
 	server.EstablishConnectionToAllOtherNodes(standardPort, port, transportCreds, connectedNodes)
 
-	go server.RequestLederPosition(node.port)
+	go server.RequestLederPosition()
 
 	select {}
 }
