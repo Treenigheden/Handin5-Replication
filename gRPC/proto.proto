@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package main;
+
+option go_package = "gRPC/proto";
+
+service ServerNode {
+    //API for clients:
+    //dont know if (void) can be expressed like this
+    rpc Bid(BidInput) returns (Confirmation);
+    rpc Result() returns (Outcome);
+    
+    //
+    rpc AnnounceConnection(ConnectionAnnouncement) returns (Confirmation); //maybe confirmation from leader should include timestamp so that followernodes have propper timestamp from begning
+    rpc AnnounceUpdate(UpdateAnnouncement) returns (Confirmation); //for when the leaderserver gets an upgrade
+    rpc RequestLeadership(AccessRequest) returns (AccessRequestResponse);
+
+    //need some further functions in order to make deathnode and decisionnode announcements
+}
+
+message BidInput {
+    int32 bid = 1;
+}
+
+message Outcome{
+    int32 amount = 1;
+    bool auctionOver = 2;
+}
+
+message Confirmation {
+    bool success = 1;
+}
+
+message ConnectionAnnouncement {
+    int32 nodeID = 1;
+    int32 timestamp = 2;
+}
+
+message UpdateAnnouncement {
+    string changedData = 1;
+    int32 timestamp = 2;
+}
+
+message AccessRequestResponse {
+    bool granted = 1;
+    int32 timestamp = 2;
+}
+
+message AccessRequest {
+    int32 nodeID = 1;
+    int32 timestamp = 2;
+}
+
+//might not be neccecary
+service ClientNode {
+
+}

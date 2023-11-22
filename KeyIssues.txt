@@ -1,0 +1,3 @@
+Issues that can occor when having replicated data in a distributed system:
+A server creashes/fails:
+1. that server node is the 
