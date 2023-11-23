@@ -65,11 +65,30 @@ func (s *Server) Result(ctx context.Context, _ *pb.Empty) (*pb.Outcome, error) {
 }
 
 func (s *Server) AnnounceConnection(ctx context.Context, announcement *pb.ConnectionAnnouncement) (*pb.Confirmation, error) {
-
+	//We have recieved a connection announcement, which means that a new node has established a connection to this client.
+	//We must also establish a connection to this client in return. We have the information we need from the ConnectionAnnouncement
+	transportCreds := insecure.NewCredentials()
+	//Establish a grpc connection to the other node using addres and transport credentials
+	address := ":" + strconv.Itoa(int(announcement.NodeID))
+	fmt.Println("NEW NODE JOINED.")
+	conn, err := grpc.Dial(address, grpc.WithTransportCredentials(transportCreds))
+	if err != nil {
+		log.Fatalf("Failed to connect  ... : %v\n", err)
+	}
+	//we have establised a new connection to the new node. We add it to the list of node connections
+	node := pb.NewServerNodeClient(conn)
+	//Add the node we have connected to our list of nodes in the system.
+	//We also maintain a map which lets us find the node from its NodeID.
+	nodeInfo := NodeInfo{port: announcement.NodeID, client: node}
+	s.node.connectedNodes = append(s.node.connectedNodes, nodeInfo.client)
+	connectedNodesMapPort[announcement.NodeID] = nodeInfo
+	connectedNodesMapClient[node] = nodeInfo
+	//We send back a confirmation message to indicate that the connection was esablished
+	return &pb.Confirmation{}, nil
 }
 
 func (s *Server) AnnounceUpdate(ctx context.Context, announcement *pb.UpdateAnnouncement) (*pb.Confirmation, error) {
-
+	return &pb.Confirmation{}, nil //OBSOBSOBSOBS
 }
 
 func (s *Server) RequestLeadership(ctx context.Context, request *pb.AccessRequest) (*pb.AccessRequestResponse, error) {
@@ -244,6 +263,7 @@ func main() {
 	server.node = *node
 
 	server.EstablishConnectionToAllOtherNodes(standardPort, port, transportCreds, connectedNodes)
+	log.Printf("The number of connected nodes is %v", len(server.node.connectedNodes))
 
 	go server.RequestLederPosition()
 
