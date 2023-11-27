@@ -41,12 +41,12 @@ var auctionIsRunning = false
 
 func (s *Server) Bid(ctx context.Context, input *pb.BidInput) (*pb.Confirmation, error) {
 	if !auctionIsRunning {
-		fmt.Println("Someone tried to bed while the auction was not running!")
+		fmt.Println("Leader: Someone tried to bid while the auction was not running!")
 		return &pb.Confirmation{Success: false}, nil
 	} else if input.Bid > int32(highestBid) {
 		highestBid = int(input.Bid)
 		highestBidderID = int(input.Port)
-		fmt.Printf("New highest bid: %v New highest bidder: %v\n", highestBid, highestBidderID)
+		fmt.Printf("Leader: New highest bid: %v \n Highest bidder: %v\n", highestBid, highestBidderID)
 		return &pb.Confirmation{Success: true}, nil
 	} else {
 		return &pb.Confirmation{Success: false}, nil
@@ -73,19 +73,27 @@ func (s *Server) AnnounceConnection(ctx context.Context, announcement *pb.Connec
 	if err != nil {
 		log.Fatalf("Failed to connect  ... : %v\n", err)
 	}
-	//we have establised a new connection to the new node. We add it to the list of node connections
+	//we have establised a new connection to the new node.
 	node := pb.NewServerNodeClient(conn)
-	//Add the node we have connected to our list of nodes in the system.
+	//We add the node we have connected to our list of nodes in the system.
 	//We also maintain a map which lets us find the node from its NodeID.
 	nodeInfo := NodeInfo{port: announcement.NodeID, client: node}
 	s.node.connectedNodes = append(s.node.connectedNodes, nodeInfo.client)
 	connectedNodesMapPort[announcement.NodeID] = nodeInfo
 	connectedNodesMapClient[node] = nodeInfo
+	//We update the node with the newest information
+	node.AnnounceUpdate(context.Background(), &pb.UpdateAnnouncement{HighestBid: int32(highestBid), HighestBidder: int32(highestBidderID), AuctionIsOngoing: auctionIsRunning})
 	//We send back a confirmation message to indicate that the connection was esablished
 	return &pb.Confirmation{}, nil
 }
 
 func (s *Server) AnnounceUpdate(ctx context.Context, announcement *pb.UpdateAnnouncement) (*pb.Confirmation, error) {
+	//We need to keep nodes updated in case they need to take over as leader.
+	//This means updating every node each time something new happens.
+	highestBid = int(announcement.HighestBid)
+	highestBidderID = int(announcement.HighestBidder)
+	auctionIsRunning = announcement.AuctionIsOngoing
+	fmt.Println("I recieved an update. Something happened somewhere...")
 	return &pb.Confirmation{}, nil //OBSOBSOBSOBS
 }
 
@@ -118,19 +126,19 @@ func (s *Server) IAmLeader(ctx context.Context, anouncement *pb.ConnectionAnnoun
 
 func (s *Server) RequestLederPosition() {
 	var isLeaderCandidate = true
+	fmt.Println("Hello, I am running")
 	for _, connectedNode := range s.node.connectedNodes {
 		var response, err = connectedNode.RequestLeadership(context.Background(), &pb.AccessRequest{NodeID: s.node.port, Timestamp: s.node.timestamp})
 		if err != nil {
-			log.Fatalf("OH NO, AN ERROR OCCURED WHILE ASKING A NODE TO BE A LEADER")
-		}
-		if !response.Granted {
+			log.Println("A node is down ... this may or may not be expected.")
+		} else if !response.Granted {
 			isLeaderCandidate = false
 			break
 		}
 	}
 
 	if isLeaderCandidate {
-		fmt.Println("I am new leader")
+		fmt.Println("I am the leader")
 		s.node.isLeaderNode = true
 		s.node.leader = s.node.client
 		s.node.timestamp++
@@ -210,17 +218,26 @@ func (s *Server) cli_interface() {
 			if err != nil {
 				fmt.Println("ERROR OCCURED! TRY AGAIN.")
 			}
-			if result.AuctionOver { //OBS Why capital first letter? Is this correct?
-				fmt.Println("The auction is over. The winning bid was: ", result.Amount)
+			if result.AuctionOver {
+				fmt.Print("The auction is over. ")
+				if result.Amount == -1 {
+					fmt.Println("The were no bids.")
+				} else {
+					fmt.Printf("The winning bidder was: %v with a bid of: %v. \n", result.Winner, result.Amount)
+				}
 			} else {
 				fmt.Println("The auction is ongoing. The current highest bid is:", result.Amount)
 			}
 		} else if input == "start" {
 			if s.node.isLeaderNode {
 				auctionIsRunning = true
-				fmt.Println("Starting new auction ...")
+				highestBid = -1
+				highestBidderID = -1
+				fmt.Println("New auction started ...")
+				s.updateAllNodes()
+				//s.updateAllNodes()
 			} else {
-				fmt.Println("Only the auction leader can start and end auctions ...")
+				fmt.Println("Invalid command. Only the auction leader can start and end auctions")
 			}
 		} else if input == "end" && s.node.isLeaderNode {
 			result, err := s.node.leader.Result(context.Background(), &pb.Empty{})
@@ -229,16 +246,37 @@ func (s *Server) cli_interface() {
 			}
 			auctionIsRunning = false
 			fmt.Println("Ending auction! The winning bid was: " + strconv.Itoa(int(result.Amount)))
+			s.updateAllNodes()
 		} else {
 			inputInt, err := strconv.Atoi(input)
 
 			if err != nil {
 				fmt.Println("INVALID INPUT! TRY AGAIN.")
 			} else {
-				s.node.leader.Bid(context.Background(), &pb.BidInput{Bid: int32(inputInt), Port: s.node.port})
+				outcome, err := s.node.leader.Bid(context.Background(), &pb.BidInput{Bid: int32(inputInt), Port: s.node.port})
+				if err != nil {
+					//If we get an error back from the leader we assume that the leader is dead. We request leadership.
+					s.RequestLederPosition()
+					//Once a new leader has been determined we repeat the bid:
+					outcome, _ = s.node.leader.Bid(context.Background(), &pb.BidInput{Bid: int32(inputInt), Port: s.node.port})
+					//OBSOBSOBS ... Hmm, if the new leader fails in between becoming leader and recieving the bid, how do we handle this in a more elegant way?
+				}
+				if outcome.Success {
+					fmt.Println("Your bid was successful, you are now the highest bidder")
+					highestBid = inputInt
+					highestBidderID = int(s.node.port)
+					s.updateAllNodes()
+				} else {
+					fmt.Println("Your bid was not successful.")
+				}
 			}
 		}
+	}
+}
 
+func (s *Server) updateAllNodes() {
+	for _, connectedNode := range s.node.connectedNodes {
+		connectedNode.AnnounceUpdate(context.Background(), &pb.UpdateAnnouncement{HighestBid: int32(highestBid), HighestBidder: int32(highestBidderID), AuctionIsOngoing: auctionIsRunning})
 	}
 }
 

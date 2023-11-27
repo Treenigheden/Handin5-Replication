@@ -39,8 +39,10 @@ message ConnectionAnnouncement {
 }
 
 message UpdateAnnouncement {
-    string changedData = 1;
-    int32 timestamp = 2;
+    int32 highestBid = 1;
+    int32 highestBidder = 2;
+    bool AuctionIsOngoing = 3;
+    int32 timestamp = 4;
 }
 
 message AccessRequestResponse {
