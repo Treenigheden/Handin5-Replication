@@ -37,18 +37,16 @@ var connectedNodesMapPort = make(map[int32]NodeInfo)
 var connectedNodesMapClient = make(map[pb.ServerNodeClient]NodeInfo)
 var highestBid = -1
 var highestBidderID = -1
-
-// We only need to consider this variable if we are leader.
-// If we are leader it is correctly updated by the ManageAuction method.
 var auctionIsRunning = false
 
 func (s *Server) Bid(ctx context.Context, input *pb.BidInput) (*pb.Confirmation, error) {
 	if !auctionIsRunning {
+		fmt.Println("Someone tried to bed while the auction was not running!")
 		return &pb.Confirmation{Success: false}, nil
-	}
-	if input.Bid > int32(highestBid) {
+	} else if input.Bid > int32(highestBid) {
 		highestBid = int(input.Bid)
 		highestBidderID = int(input.Port)
+		fmt.Printf("New highest bid: %v New highest bidder: %v\n", highestBid, highestBidderID)
 		return &pb.Confirmation{Success: true}, nil
 	} else {
 		return &pb.Confirmation{Success: false}, nil
@@ -57,9 +55,9 @@ func (s *Server) Bid(ctx context.Context, input *pb.BidInput) (*pb.Confirmation,
 
 func (s *Server) Result(ctx context.Context, _ *pb.Empty) (*pb.Outcome, error) {
 	if auctionIsRunning {
-		return &pb.Outcome{Amount: int32(highestBid), AuctionOver: false}, nil
+		return &pb.Outcome{Amount: int32(highestBid), AuctionOver: false, Winner: int32(highestBidderID)}, nil
 	} else {
-		return &pb.Outcome{Amount: int32(highestBid), AuctionOver: true}, nil
+		return &pb.Outcome{Amount: int32(highestBid), AuctionOver: true, Winner: int32(highestBidderID)}, nil
 	}
 
 }
@@ -96,7 +94,7 @@ func (s *Server) RequestLeadership(ctx context.Context, request *pb.AccessReques
 	//First we compare the timestamp of this node with the timestamp of the incoming request.
 	//If the incoming timestamp is greater (OBS) than the local timestamp, we know that we are not going to win an election. We don't bother sending out requests. We send a response.
 	//If the incoming timestamp is less than the local timestamp, we know that the remote node is out. We have a chance ourselves, however! We send out requests. We send a response.
-	if request.Timestamp > s.node.timestamp {
+	if request.Timestamp >= s.node.timestamp {
 		return &pb.AccessRequestResponse{Granted: true, Timestamp: s.node.timestamp}, nil
 	} else {
 		go s.RequestLederPosition()
@@ -127,16 +125,16 @@ func (s *Server) RequestLederPosition() {
 		}
 		if !response.Granted {
 			isLeaderCandidate = false
-			go s.AttendAuction()
 			break
 		}
 	}
 
 	if isLeaderCandidate {
 		fmt.Println("I am new leader")
+		s.node.isLeaderNode = true
+		s.node.leader = s.node.client
+		s.node.timestamp++
 		s.AnnounceLeadership()
-		go s.AttendAuction()
-		go s.ManageAuction()
 	}
 
 }
@@ -146,14 +144,6 @@ func (s *Server) AnnounceLeadership() {
 	for _, connectedNode := range s.node.connectedNodes {
 		connectedNode.IAmLeader(context.Background(), &pb.ConnectionAnnouncement{NodeID: s.node.port, Timestamp: s.node.timestamp})
 	}
-
-}
-
-func (s *Server) ManageAuction() {
-
-}
-
-func (s *Server) AttendAuction() {
 
 }
 
@@ -206,6 +196,48 @@ func (s *Server) EstablishConnectionToAllOtherNodes(standardPort int, thisPort i
 			log.Fatalf("Oh no! The node sent an announcement of a new connection but did not recieve a confirmation in return. Error: %v", err)
 		}
 		//fmt.Println("SENDING THE ANNOUNCEMENT SEEMS TO HAVE GONE OK?")
+
+	}
+}
+
+func (s *Server) cli_interface() {
+	for {
+		fmt.Print(" > ")
+		var input string
+		fmt.Scanln(&input)
+		if input == "result" {
+			result, err := s.node.leader.Result(context.Background(), &pb.Empty{})
+			if err != nil {
+				fmt.Println("ERROR OCCURED! TRY AGAIN.")
+			}
+			if result.AuctionOver { //OBS Why capital first letter? Is this correct?
+				fmt.Println("The auction is over. The winning bid was: ", result.Amount)
+			} else {
+				fmt.Println("The auction is ongoing. The current highest bid is:", result.Amount)
+			}
+		} else if input == "start" {
+			if s.node.isLeaderNode {
+				auctionIsRunning = true
+				fmt.Println("Starting new auction ...")
+			} else {
+				fmt.Println("Only the auction leader can start and end auctions ...")
+			}
+		} else if input == "end" && s.node.isLeaderNode {
+			result, err := s.node.leader.Result(context.Background(), &pb.Empty{})
+			if err != nil {
+				fmt.Println("ERROR OCCURED! TRY AGAIN.")
+			}
+			auctionIsRunning = false
+			fmt.Println("Ending auction! The winning bid was: " + strconv.Itoa(int(result.Amount)))
+		} else {
+			inputInt, err := strconv.Atoi(input)
+
+			if err != nil {
+				fmt.Println("INVALID INPUT! TRY AGAIN.")
+			} else {
+				s.node.leader.Bid(context.Background(), &pb.BidInput{Bid: int32(inputInt), Port: s.node.port})
+			}
+		}
 
 	}
 }
@@ -266,6 +298,7 @@ func main() {
 	log.Printf("The number of connected nodes is %v", len(server.node.connectedNodes))
 
 	go server.RequestLederPosition()
+	go server.cli_interface()
 
 	select {}
 }

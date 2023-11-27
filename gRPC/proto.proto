@@ -26,6 +26,7 @@ message BidInput {
 message Outcome{
     int32 amount = 1;
     bool auctionOver = 2;
+    int32 winner = 3;
 }
 
 message Confirmation {
