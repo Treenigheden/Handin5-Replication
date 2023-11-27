@@ -27,10 +27,12 @@ message Outcome{
     int32 amount = 1;
     bool auctionOver = 2;
     int32 winner = 3;
+    int32 timestamp = 4;
 }
 
 message Confirmation {
     bool success = 1;
+    int32 timestamp = 2;
 }
 
 message ConnectionAnnouncement {
