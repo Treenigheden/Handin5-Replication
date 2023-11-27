@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"time"
 
 	pb "homework5/gRPC"
 
@@ -93,7 +94,6 @@ func (s *Server) AnnounceUpdate(ctx context.Context, announcement *pb.UpdateAnno
 	highestBid = int(announcement.HighestBid)
 	highestBidderID = int(announcement.HighestBidder)
 	auctionIsRunning = announcement.AuctionIsOngoing
-	fmt.Println("I recieved an update. Something happened somewhere...")
 	return &pb.Confirmation{}, nil //OBSOBSOBSOBS
 }
 
@@ -126,7 +126,6 @@ func (s *Server) IAmLeader(ctx context.Context, anouncement *pb.ConnectionAnnoun
 
 func (s *Server) RequestLederPosition() {
 	var isLeaderCandidate = true
-	fmt.Println("Hello, I am running")
 	for _, connectedNode := range s.node.connectedNodes {
 		var response, err = connectedNode.RequestLeadership(context.Background(), &pb.AccessRequest{NodeID: s.node.port, Timestamp: s.node.timestamp})
 		if err != nil {
@@ -209,6 +208,10 @@ func (s *Server) EstablishConnectionToAllOtherNodes(standardPort int, thisPort i
 }
 
 func (s *Server) cli_interface() {
+	fmt.Println("Type 'result' to see details about the auction. \nType any number to bid in the action.")
+	if s.node.isLeaderNode {
+		fmt.Println("You are the leader node. You can start and end auctions by typing 'start' and 'end'")
+	}
 	for {
 		fmt.Print(" > ")
 		var input string
@@ -336,6 +339,7 @@ func main() {
 	log.Printf("The number of connected nodes is %v", len(server.node.connectedNodes))
 
 	go server.RequestLederPosition()
+	time.Sleep(1000 * time.Millisecond)
 	go server.cli_interface()
 
 	select {}
