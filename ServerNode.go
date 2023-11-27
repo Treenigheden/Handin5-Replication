@@ -212,11 +212,12 @@ func (s *Server) EstablishConnectionToAllOtherNodes(standardPort int, thisPort i
 }
 
 func (s *Server) cli_interface() {
-	fmt.Println("Type 'result' to see details about the auction. \nType any number to bid in the action.")
+	fmt.Println("Type 'result' to see details about the auction. \nType any number to bid in the action.\n")
 	if s.node.isLeaderNode {
-		fmt.Println(" * * * Start and end auctions by typing 'start' or 'end' * * * \n")
+		fmt.Println("Start and end auctions by typing 'start' or 'end' \n")
 	}
 	for {
+		//fmt.Print(" > ")
 		//fmt.Println("Current timestamp: ", s.node.timestamp)
 		var input string
 		fmt.Scanln(&input)
