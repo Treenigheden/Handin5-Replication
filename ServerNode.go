@@ -34,8 +34,7 @@ type Server struct {
 }
 
 var connectedNodesMapPort = make(map[int32]pb.ServerNodeClient)
-
-var connectedNodesMapClient = make(map[pb.ServerNodeClient]NodeInfo)
+var connectedNodesMapClient = make(map[pb.ServerNodeClient]int32)
 var highestBid = -1
 var highestBidderID = -1
 var auctionIsRunning = false
@@ -59,6 +58,7 @@ func (s *Server) Bid(ctx context.Context, input *pb.BidInput) (*pb.Confirmation,
 func (s *Server) Result(ctx context.Context, _ *pb.Empty) (*pb.Outcome, error) {
 	s.node.timestamp++
 	//fmt.Println("The timestamp is ", s.node.timestamp)
+
 	if auctionIsRunning {
 		return &pb.Outcome{Amount: int32(highestBid), AuctionOver: false, Winner: int32(highestBidderID), Timestamp: s.node.timestamp - 1}, nil
 	} else {
@@ -83,6 +83,7 @@ func (s *Server) AnnounceConnection(ctx context.Context, announcement *pb.Connec
 	//We also maintain a map which lets us find the node from its NodeID.
 	s.node.connectedNodes = append(s.node.connectedNodes, node)
 	connectedNodesMapPort[announcement.NodeID] = node
+	connectedNodesMapClient[node] = announcement.NodeID
 	//We update the node with the newest information
 	node.AnnounceUpdate(context.Background(), &pb.UpdateAnnouncement{HighestBid: int32(highestBid), HighestBidder: int32(highestBidderID), AuctionIsOngoing: auctionIsRunning, Timestamp: s.node.timestamp})
 	//We send back a confirmation message to indicate that the connection was esablished
@@ -193,9 +194,10 @@ func (s *Server) EstablishConnectionToAllOtherNodes(standardPort int, thisPort i
 		//We have established a connection to existing port!
 		//First we add the node to our own list of connected nodes as well as the relevant maps.....
 		s.node.connectedNodes = append(s.node.connectedNodes, node)
-		connectedNodes = append(connectedNodes, node)
+		//connectedNodes = append(connectedNodes, node)
 
 		connectedNodesMapPort[int32(port)] = node
+		connectedNodesMapClient[node] = int32(port)
 
 		//Then we send an announcement to inform the node
 		//in order to inform it that we have connected to it (and that it should connect to this node in return.)
@@ -209,6 +211,7 @@ func (s *Server) EstablishConnectionToAllOtherNodes(standardPort int, thisPort i
 }
 
 func (s *Server) cli_interface() {
+
 	fmt.Println("Type 'result' to see details about the auction. \nType any number to bid in the action.\n")
 	if s.node.isLeaderNode {
 		fmt.Println("Start and end auctions by typing 'start' or 'end' \n")
@@ -275,23 +278,35 @@ func (s *Server) cli_interface() {
 				fmt.Println("INVALID INPUT! TRY AGAIN.")
 			} else {
 				outcome, err := s.node.leader.Bid(context.Background(), &pb.BidInput{Bid: int32(inputInt), Port: s.node.port})
+				auctionState, err := s.node.leader.Result(context.Background(), &pb.Empty{})
+
 				if err != nil {
 					//If we get an error back from the leader we assume that the leader is dead. We request leadership.
 					s.RequestLederPosition()
 					//Once a new leader has been determined we repeat the bid:
 					time.Sleep(time.Millisecond * 100) //We sleep to allow the new leader to be elected before continuing.
 					outcome, _ = s.node.leader.Bid(context.Background(), &pb.BidInput{Bid: int32(inputInt), Port: s.node.port})
+					auctionState, _ = s.node.leader.Result(context.Background(), &pb.Empty{})
 					//OBSOBSOBS ... Hmm, if the new leader fails in between becoming leader and recieving the bid, how do we handle this in a more elegant way?
 				}
 				if outcome.Success {
 					fmt.Println("Your bid was successful.")
+					auctionIsRunning = !auctionState.AuctionOver
 					highestBid = inputInt
 					highestBidderID = int(s.node.port)
 					s.updateTimestamp(outcome.Timestamp) //TTTIMESTAMP
-					//s.updateAllNodes()
+
+					//In order to prevent a case where the leader node has made a bid in the auction and then crashes, meaning no other node would have heard
+					//of this bid unless they happened to have called result, we need to update at least one other node about the state of the auction
+					//So that this node may be made leader in the described case. We find a node from the list of connected nodes (if any) and update this.
+					//In this way we still avoid having to update all nodes everywhere all the time.
+
+					if len(s.node.connectedNodes) > 1 {
+						s.node.connectedNodes[len(s.node.connectedNodes)-1].AnnounceUpdate(context.Background(), &pb.UpdateAnnouncement{HighestBid: int32(highestBid), HighestBidder: int32(highestBidderID), AuctionIsOngoing: auctionIsRunning, Timestamp: s.node.timestamp + 1})
+					}
+
 				} else {
 					fmt.Println("Your bid was not successful.")
-					auctionState, _ := s.node.leader.Result(context.Background(), &pb.Empty{})
 					auctionIsRunning = !auctionState.AuctionOver
 					highestBid = int(auctionState.Amount)
 					highestBidderID = int(auctionState.Winner)
