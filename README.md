@@ -9,4 +9,5 @@ In order to run this program, do as follows:
   <li>Run the following command: <i>go run ServerNode.go</i></li>
   <li>Open as many new terminals as you'd like, and redo the previous steps</li>
   <li>The leader will be able to start and end auctions, using the <i>start</i> and <i>end</i> commands, respectively </li>
+  <li>All nodes, including the leader, is able to bid on an auction, as long as an auction is running</li>
 </ol> 
