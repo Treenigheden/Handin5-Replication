@@ -108,7 +108,7 @@ func (s *Server) RequestLeadership(ctx context.Context, request *pb.AccessReques
 	if request.Timestamp >= s.node.timestamp {
 		return &pb.AccessRequestResponse{Granted: true, Timestamp: s.node.timestamp}, nil
 	} else {
-		go s.RequestLederPosition()
+		go s.RequestLeaderPosition()
 		return &pb.AccessRequestResponse{Granted: false, Timestamp: s.node.timestamp}, nil
 	}
 }
@@ -127,7 +127,7 @@ func (s *Server) IAmLeader(ctx context.Context, anouncement *pb.ConnectionAnnoun
 	return &pb.Empty{}, nil
 }
 
-func (s *Server) RequestLederPosition() {
+func (s *Server) RequestLeaderPosition() {
 	var isLeaderCandidate = true
 	for _, connectedNode := range s.node.connectedNodes {
 		var response, err = connectedNode.RequestLeadership(context.Background(), &pb.AccessRequest{NodeID: s.node.port, Timestamp: s.node.timestamp})
@@ -140,7 +140,7 @@ func (s *Server) RequestLederPosition() {
 	}
 
 	if isLeaderCandidate {
-		fmt.Println(" * * * This node is the leader * * * \n")
+		fmt.Println(" * * * This node is the leader * * *")
 		s.node.isLeaderNode = true
 		s.node.leader = s.node.client
 		s.AnnounceLeadership()
@@ -212,9 +212,9 @@ func (s *Server) EstablishConnectionToAllOtherNodes(standardPort int, thisPort i
 }
 
 func (s *Server) cli_interface() {
-	fmt.Println("Type 'result' to see details about the auction. \nType any number to bid in the action.\n")
+	fmt.Println("Type 'result' to see details about the auction. \nType any number to bid in the action.")
 	if s.node.isLeaderNode {
-		fmt.Println("Start and end auctions by typing 'start' or 'end' \n")
+		fmt.Println("Start and end auctions by typing 'start' or 'end' ")
 	}
 	for {
 		//fmt.Print(" > ")
@@ -225,7 +225,7 @@ func (s *Server) cli_interface() {
 			result, err := s.node.leader.Result(context.Background(), &pb.Empty{})
 			if err != nil {
 				//If we get an error back from the leader we assume that the leader is dead. We request leadership.
-				s.RequestLederPosition()
+				s.RequestLeaderPosition()
 				//Once a new leader has been determined we repeat the result method call:
 				time.Sleep(time.Millisecond * 100) //We sleep to allow the new leader to be elected before continuing.
 				result, _ = s.node.leader.Result(context.Background(), &pb.Empty{})
@@ -233,7 +233,7 @@ func (s *Server) cli_interface() {
 			auctionIsRunning = !result.AuctionOver
 			highestBid = int(result.Amount)
 			highestBidderID = int(result.Winner)
-			s.updateTimestamp(result.Timestamp) //TTTIMESTAMP
+			s.updateTimestamp(result.Timestamp) //TIMESTAMP
 			if result.AuctionOver {
 				fmt.Println("There is no ongoing auction. ")
 				if result.Amount == -1 {
@@ -242,7 +242,7 @@ func (s *Server) cli_interface() {
 					fmt.Printf("The winning bidder was: %v with a bid of: %v. \n", result.Winner, result.Amount)
 				}
 			} else {
-				fmt.Println("The auction is ongoing. ")
+				fmt.Printf("The auction is ongoing.")
 				if result.Amount == -1 {
 					fmt.Println("There are no bids yet.")
 				} else {
@@ -254,23 +254,27 @@ func (s *Server) cli_interface() {
 				auctionIsRunning = true
 				highestBid = -1
 				highestBidderID = -1
-				fmt.Println("New auction started ...")
-				s.node.timestamp++ //TTTIMESTAMP
-				//fmt.Println("The timestamp is ", s.node.timestamp)
-				//s.updateAllNodes()
+				fmt.Print("Name of item being sold (single word): ")
+				fmt.Scanln(&input)
+				fmt.Printf("New auction started on '%s'... \n", input)
+				s.node.timestamp++ //TIMESTAMP
 			} else {
 				fmt.Println("Invalid command. Only the auction leader can start and end auctions")
 			}
-		} else if input == "end" && s.node.isLeaderNode {
-			result, err := s.node.leader.Result(context.Background(), &pb.Empty{})
-			if err != nil {
-				fmt.Println("ERROR OCCURED! TRY AGAIN.")
+		} else if input == "end" {
+			if s.node.isLeaderNode {
+				result, err := s.node.leader.Result(context.Background(), &pb.Empty{})
+				if err != nil {
+					fmt.Println("ERROR OCCURED! TRY AGAIN.")
+				}
+				auctionIsRunning = false
+				fmt.Println("Ending auction! The winning bid was: " + strconv.Itoa(int(result.Amount)))
+				fmt.Printf("Item sold: '%s'", input)
+				s.node.timestamp++ //TIMESTAMP
+
+			} else {
+				fmt.Println("Permission Denied!")
 			}
-			auctionIsRunning = false
-			fmt.Println("Ending auction! The winning bid was: " + strconv.Itoa(int(result.Amount)))
-			s.node.timestamp++ //TTTIMESTAMP
-			//fmt.Println("The timestamp is ", s.node.timestamp)
-			//s.updateAllNodes()
 		} else {
 			inputInt, err := strconv.Atoi(input)
 
@@ -280,7 +284,7 @@ func (s *Server) cli_interface() {
 				outcome, err := s.node.leader.Bid(context.Background(), &pb.BidInput{Bid: int32(inputInt), Port: s.node.port})
 				if err != nil {
 					//If we get an error back from the leader we assume that the leader is dead. We request leadership.
-					s.RequestLederPosition()
+					s.RequestLeaderPosition()
 					//Once a new leader has been determined we repeat the bid:
 					time.Sleep(time.Millisecond * 100) //We sleep to allow the new leader to be elected before continuing.
 					outcome, _ = s.node.leader.Bid(context.Background(), &pb.BidInput{Bid: int32(inputInt), Port: s.node.port})
@@ -290,13 +294,13 @@ func (s *Server) cli_interface() {
 					fmt.Println("Your bid was successful.")
 					highestBid = inputInt
 					highestBidderID = int(s.node.port)
-					s.updateTimestamp(outcome.Timestamp) //TTTIMESTAMP
+					s.updateTimestamp(outcome.Timestamp) //TIMESTAMP
 					//s.updateAllNodes()
 				} else {
 					fmt.Println("Your bid was not successful.")
 					highestBid = inputInt
 					highestBidderID = int(s.node.port)
-					s.updateTimestamp(outcome.Timestamp) //TTTIMESTAMP
+					s.updateTimestamp(outcome.Timestamp) //TIMESTAMP
 				}
 			}
 		}
@@ -372,7 +376,7 @@ func main() {
 	server.EstablishConnectionToAllOtherNodes(standardPort, port, transportCreds, connectedNodes)
 	//log.Printf("The number of connected nodes is %v", len(server.node.connectedNodes))
 
-	go server.RequestLederPosition()
+	go server.RequestLeaderPosition()
 	time.Sleep(1000 * time.Millisecond)
 	go server.cli_interface()
 
