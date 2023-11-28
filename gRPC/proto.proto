@@ -8,6 +8,8 @@ service ServerNode {
     //dont know if (void) can be expressed like this
     rpc Bid(BidInput) returns (Confirmation);
     rpc Result(Empty) returns (Outcome);
+    
+    //
     rpc AnnounceConnection(ConnectionAnnouncement) returns (Confirmation); //maybe confirmation from leader should include timestamp so that followernodes have propper timestamp from begning
     rpc AnnounceUpdate(UpdateAnnouncement) returns (Confirmation); //for when the leaderserver gets an upgrade
     rpc RequestLeadership(AccessRequest) returns (AccessRequestResponse);
