@@ -156,6 +156,12 @@ func (s *Server) AnnounceLeadership() {
 
 }
 
+func runTimer(seconds int) {
+	time.Sleep(time.Duration(seconds) * time.Second)
+	auctionIsRunning = false
+	fmt.Println("TIMES UP!")
+}
+
 func FindAnAvailablePort(standardPort int) (int, error) {
 	for port := standardPort; port < standardPort+100; port++ {
 		addr := "localhost:" + strconv.Itoa(port)
@@ -253,7 +259,11 @@ func (s *Server) cli_interface() {
 				highestBidderID = -1
 				fmt.Print("Name of item being sold (single word): ")
 				fmt.Scanln(&input)
+				var time int
+				fmt.Println("Time length of auction (in seconds): ")
+				fmt.Scanln(&time)
 				fmt.Printf("New auction started on '%s'... \n", input)
+				go runTimer(time)
 				s.node.timestamp++ //TIMESTAMP
 			} else {
 				fmt.Println("Invalid command. Only the auction leader can start and end auctions")
