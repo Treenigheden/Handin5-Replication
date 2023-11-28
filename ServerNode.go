@@ -33,7 +33,7 @@ type Server struct {
 	node NodeInfo
 }
 
-var connectedNodesMapPort = make(map[int32]NodeInfo)
+var connectedNodesMapPort = make(map[int32]pb.ServerNodeClient)
 
 var connectedNodesMapClient = make(map[pb.ServerNodeClient]NodeInfo)
 var highestBid = -1
@@ -81,10 +81,8 @@ func (s *Server) AnnounceConnection(ctx context.Context, announcement *pb.Connec
 	node := pb.NewServerNodeClient(conn)
 	//We add the node we have connected to our list of nodes in the system.
 	//We also maintain a map which lets us find the node from its NodeID.
-	nodeInfo := NodeInfo{port: announcement.NodeID, client: node}
-	s.node.connectedNodes = append(s.node.connectedNodes, nodeInfo.client)
-	connectedNodesMapPort[announcement.NodeID] = nodeInfo
-	connectedNodesMapClient[node] = nodeInfo
+	s.node.connectedNodes = append(s.node.connectedNodes, node)
+	connectedNodesMapPort[announcement.NodeID] = node
 	//We update the node with the newest information
 	node.AnnounceUpdate(context.Background(), &pb.UpdateAnnouncement{HighestBid: int32(highestBid), HighestBidder: int32(highestBidderID), AuctionIsOngoing: auctionIsRunning, Timestamp: s.node.timestamp})
 	//We send back a confirmation message to indicate that the connection was esablished
@@ -122,7 +120,7 @@ func (s *Server) IAmLeader(ctx context.Context, anouncement *pb.ConnectionAnnoun
 	//When this method is called by a remote node, it means that that node is the new leader.
 	//We update the leader node and send back a confirmation message (empty)
 	var node = connectedNodesMapPort[anouncement.NodeID]
-	s.node.leader = node.client
+	s.node.leader = node
 
 	return &pb.Empty{}, nil
 }
@@ -195,10 +193,9 @@ func (s *Server) EstablishConnectionToAllOtherNodes(standardPort int, thisPort i
 		//We have established a connection to existing port!
 		//First we add the node to our own list of connected nodes as well as the relevant maps.....
 		s.node.connectedNodes = append(s.node.connectedNodes, node)
-		connectedNodes = append(connectedNodes, node)                                                                                     //OBS OBS OBS - why do we have two of these? Can we just have the connected nodes on the server? Why is it on the server anyway?
-		nodeInfo := &NodeInfo{port: int32(port), client: node, connectedNodes: s.node.connectedNodes, timestamp: int32(s.node.timestamp)} //OBS OBS OBS IS THIS RIGHT REGARDING TIMESTAMP?
-		connectedNodesMapPort[int32(port)] = *nodeInfo
-		connectedNodesMapClient[node] = *nodeInfo
+		connectedNodes = append(connectedNodes, node)
+
+		connectedNodesMapPort[int32(port)] = node
 
 		//Then we send an announcement to inform the node
 		//in order to inform it that we have connected to it (and that it should connect to this node in return.)
@@ -298,9 +295,11 @@ func (s *Server) cli_interface() {
 					//s.updateAllNodes()
 				} else {
 					fmt.Println("Your bid was not successful.")
-					highestBid = inputInt
-					highestBidderID = int(s.node.port)
-					s.updateTimestamp(outcome.Timestamp) //TIMESTAMP
+					auctionState, _ := s.node.leader.Result(context.Background(), &pb.Empty{})
+					auctionIsRunning = !auctionState.AuctionOver
+					highestBid = int(auctionState.Amount)
+					highestBidderID = int(auctionState.Winner)
+					s.updateTimestamp(auctionState.Timestamp) //TIMESTAMP
 				}
 			}
 		}
@@ -369,8 +368,7 @@ func main() {
 
 	//Genrate node
 	node := &NodeInfo{port: int32(port), client: thisNodeClient, connectedNodes: connectedNodes, timestamp: int32(timestamp)}
-	connectedNodesMapPort[int32(port)] = *node
-	connectedNodesMapClient[thisNodeClient] = *node
+	connectedNodesMapPort[int32(port)] = thisNodeClient
 	server.node = *node
 
 	server.EstablishConnectionToAllOtherNodes(standardPort, port, transportCreds, connectedNodes)
