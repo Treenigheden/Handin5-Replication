@@ -38,6 +38,7 @@ var connectedNodesMapClient = make(map[pb.ServerNodeClient]int32)
 var highestBid = -1
 var highestBidderID = -1
 var auctionIsRunning = false
+var timerIsRunning = false
 
 func (s *Server) Bid(ctx context.Context, input *pb.BidInput) (*pb.Confirmation, error) {
 	s.node.timestamp++
@@ -139,7 +140,14 @@ func (s *Server) RequestLederPosition() {
 	}
 
 	if isLeaderCandidate {
-		fmt.Println(" * * * This node is the leader * * * \n")
+		fmt.Println(" * * * This node is the leader * * * ")
+		if !timerIsRunning {
+			if auctionIsRunning {
+				fmt.Println("Restarting auction timer!")
+				go RunTimerOneMin()
+			}
+		}
+
 		s.node.isLeaderNode = true
 		s.node.leader = s.node.client
 		s.AnnounceLeadership()
@@ -210,11 +218,22 @@ func (s *Server) EstablishConnectionToAllOtherNodes(standardPort int, thisPort i
 	}
 }
 
+func RunTimerOneMin() {
+	timerIsRunning = true
+	for i := 0; i < 60; i++ {
+		time.Sleep(time.Duration(1) * time.Second)
+	}
+
+	auctionIsRunning = false
+	timerIsRunning = false
+	fmt.Println("TIME IS UP!")
+}
+
 func (s *Server) cli_interface() {
 
-	fmt.Println("Type 'result' to see details about the auction. \nType any number to bid in the action.\n")
+	fmt.Println("Type 'result' to see details about the auction. \nType any number to bid in the action.")
 	if s.node.isLeaderNode {
-		fmt.Println("Start and end auctions by typing 'start' or 'end' \n")
+		fmt.Println("Start and end auctions by typing 'start' or 'end' ")
 	}
 	for {
 		//fmt.Print(" > ")
@@ -233,7 +252,7 @@ func (s *Server) cli_interface() {
 			auctionIsRunning = !result.AuctionOver
 			highestBid = int(result.Amount)
 			highestBidderID = int(result.Winner)
-			s.updateTimestamp(result.Timestamp) //TTTIMESTAMP
+			s.updateTimestamp(result.Timestamp) //TIMESTAMP
 			if result.AuctionOver {
 				fmt.Println("There is no ongoing auction. ")
 				if result.Amount == -1 {
@@ -255,9 +274,11 @@ func (s *Server) cli_interface() {
 				highestBid = -1
 				highestBidderID = -1
 				fmt.Println("New auction started ...")
-				s.node.timestamp++ //TTTIMESTAMP
+				s.node.timestamp++ //TIMESTAMP
 				//fmt.Println("The timestamp is ", s.node.timestamp)
 				//s.updateAllNodes()
+
+				go RunTimerOneMin()
 			} else {
 				fmt.Println("Invalid command. Only the auction leader can start and end auctions")
 			}
@@ -268,7 +289,7 @@ func (s *Server) cli_interface() {
 			}
 			auctionIsRunning = false
 			fmt.Println("Ending auction! The winning bid was: " + strconv.Itoa(int(result.Amount)))
-			s.node.timestamp++ //TTTIMESTAMP
+			s.node.timestamp++ //TIMESTAMP
 			//fmt.Println("The timestamp is ", s.node.timestamp)
 			//s.updateAllNodes()
 		} else {
@@ -277,7 +298,7 @@ func (s *Server) cli_interface() {
 			if err != nil {
 				fmt.Println("INVALID INPUT! TRY AGAIN.")
 			} else {
-				outcome, err := s.node.leader.Bid(context.Background(), &pb.BidInput{Bid: int32(inputInt), Port: s.node.port})
+				outcome, _ := s.node.leader.Bid(context.Background(), &pb.BidInput{Bid: int32(inputInt), Port: s.node.port})
 				auctionState, err := s.node.leader.Result(context.Background(), &pb.Empty{})
 
 				if err != nil {
@@ -294,7 +315,7 @@ func (s *Server) cli_interface() {
 					auctionIsRunning = !auctionState.AuctionOver
 					highestBid = inputInt
 					highestBidderID = int(s.node.port)
-					s.updateTimestamp(outcome.Timestamp) //TTTIMESTAMP
+					s.updateTimestamp(outcome.Timestamp) //TIMESTAMP
 
 					//In order to prevent a case where the leader node has made a bid in the auction and then crashes, meaning no other node would have heard
 					//of this bid unless they happened to have called result, we need to update at least one other node about the state of the auction
@@ -302,7 +323,7 @@ func (s *Server) cli_interface() {
 					//In this way we still avoid having to update all nodes everywhere all the time.
 
 					if len(s.node.connectedNodes) > 1 {
-						s.node.connectedNodes[len(s.node.connectedNodes)-1].AnnounceUpdate(context.Background(), &pb.UpdateAnnouncement{HighestBid: int32(highestBid), HighestBidder: int32(highestBidderID), AuctionIsOngoing: auctionIsRunning, Timestamp: s.node.timestamp + 1})
+						s.node.connectedNodes[len(s.node.connectedNodes)-1].AnnounceUpdate(context.Background(), &pb.UpdateAnnouncement{HighestBid: int32(highestBid), HighestBidder: int32(highestBidderID), AuctionIsOngoing: auctionIsRunning, Timestamp: s.node.timestamp})
 					}
 
 				} else {
@@ -310,16 +331,10 @@ func (s *Server) cli_interface() {
 					auctionIsRunning = !auctionState.AuctionOver
 					highestBid = int(auctionState.Amount)
 					highestBidderID = int(auctionState.Winner)
-					s.updateTimestamp(auctionState.Timestamp) //TTTIMESTAMP
+					s.updateTimestamp(auctionState.Timestamp) //TIMESTAMP
 				}
 			}
 		}
-	}
-}
-
-func (s *Server) updateAllNodes() {
-	for _, connectedNode := range s.node.connectedNodes {
-		connectedNode.AnnounceUpdate(context.Background(), &pb.UpdateAnnouncement{HighestBid: int32(highestBid), HighestBidder: int32(highestBidderID), AuctionIsOngoing: auctionIsRunning})
 	}
 }
 
